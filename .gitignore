@@ -1,0 +1,16 @@
+
+/.vs
+/game-maps/wwwroot
+/game-maps.Test/obj
+/game-maps.Test/obj/Debug
+/.vs
+/game-maps/obj
+/game-maps/obj
+/game-maps.Application/bin
+/game-maps.Application/obj
+/game-maps.Domain/bin
+/game-maps/bin
+/game-maps.Test/bin
+/game-maps.Infrastructure/obj
+/game-maps.Infrastructure/bin
+/game-maps.Domain/obj
