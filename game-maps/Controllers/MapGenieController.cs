@@ -1,5 +1,7 @@
-﻿using game_maps.Application.DTOs.MapGenie;
+﻿using System.Security.Claims;
+using game_maps.Application.DTOs.MapGenie;
 using game_maps.Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,11 +11,12 @@ namespace game_maps.Controllers
     [ApiController]
     public class MapGenieController(IMapGenieService mapGenieService) : ControllerBase
     {
-        [HttpPost]
-        public async Task Post([FromForm] IList<IFormFile> mapDatas, [FromForm] MapGenieSetting setting)
+        [HttpPost("{slug}")]
+        [Authorize]
+        public async Task Post(string slug, [FromForm] IList<IFormFile> files)
         {
-            var mapData = mapDatas.First();
-            await mapGenieService.Scrap(setting, mapData);
+            var userId = User?.FindFirstValue(ClaimTypes.NameIdentifier);
+            await mapGenieService.ToggleMapToGame(slug, files, userId);
         }
     }
 }

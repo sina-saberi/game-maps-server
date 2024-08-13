@@ -19,5 +19,11 @@ namespace game_maps.Controllers
         {
             await user.Register(model);
         }
+
+        [HttpGet]
+        public async Task<bool> HaveAccess(string action)
+        {
+            return true;
+        }
     }
 }

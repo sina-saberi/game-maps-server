@@ -13,8 +13,7 @@ namespace game_maps.Domain.Entities.Map
         public string Name { get; set; } = "";
         public string? Description { get; set; }
         public string Slug { get; set; } = "";
-        public MapConfig MapConfig { get; set; } = new MapConfig();
-        public ICollection<TileSet.TileSet> TileSets { get; set; } = [];
+        public MapConfig MapConfig { get; set; } = new();
         public ICollection<Category.Category> Categories { get; set; } = [];
     }
 }

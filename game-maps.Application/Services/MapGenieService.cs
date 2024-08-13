@@ -6,236 +6,228 @@ using game_maps.Domain.Entities.Game;
 using game_maps.Domain.Entities.Location;
 using game_maps.Domain.Entities.Map;
 using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Text.Json;
+using game_maps.Domain.Entities.User;
+using static System.Text.RegularExpressions.Regex;
 
 #pragma warning disable CA1416 // Validate platform compatibility
 
 
-
 namespace game_maps.Application.Services
 {
-    public class MapGenieService(IRepository<Map, int> _mapRepository, IRepository<Game, int> _gameRepository) : IMapGenieService
+    class DownloadDto(string url, string savePath)
+    {
+        public string Url { get; set; } = url;
+        public string SavePath { get; set; } = savePath;
+    }
+
+    public class MapGenieService(
+        IRepository<Map, int> mapRepository,
+        IRepository<Game, int> gameRepository,
+        IRepository<Category, int> categoryRepository,
+        IRepository<Location, int> locationRepository,
+        IFileStorageService fileStorageService)
+        : IMapGenieService
     {
         private readonly HttpClient _httpClient = new();
 
-        public async Task Scrap(MapGenieSetting setting, IFormFile mapDataFile)
+        public async Task ToggleMapToGame(string slug, IList<IFormFile> files, string? userId)
         {
-            MapGenieData data = await ConvertJsonFileToMapGenieData(mapDataFile);
-            Game game = CreateEntityFromMapGenieData(data, setting);
-            await InsertMapGenieDataToDb(game);
-            await ScrapMarker(setting.GameSlug);
-            _ = Task.Run(async () =>
+            var game = await gameRepository.GetAsync(x => x.Slug == slug);
+            if (game is null) return;
+            foreach (var file in files)
             {
-                await ScrapMedias(data);
-                await ScrapMapTiles(data, setting.GameSlug);
+                var data = await ConvertJsonFileToMapGenieData(file);
+                var map = await AddOrUpdateMapInGame(game.Id, data.map, data.mapConfig);
+                var categories = await AddOrUpdateCategories(map.Id, data.categories, data.groups);
+                await AddLocations(categories, data.locations, userId);
+            }
+        }
+
+        private async Task<Map> AddOrUpdateMapInGame(int gameId, MapGenieMapDto dto, MapGenieMapConfig configDto)
+        {
+            var tileSets = configDto.tile_sets.Select(c => new TileSet()
+            {
+                Name = c.name,
+                Extension = c.extension,
+                Pattern = c.pattern,
+                MaxZoom = c.max_zoom,
+                MinZoom = c.min_zoom
+            });
+
+            return await mapRepository.AddOrUpdateAsync(x => x.Slug == dto.slug, x =>
+            {
+                x.Slug = string.IsNullOrEmpty(x.Slug) ? dto.slug : x.Slug;
+                x.GameId = gameId;
+                x.Name = dto.title;
+                x.MapConfig.StartLng = configDto.start_lng;
+                x.MapConfig.StartLat = configDto.start_lat;
+                x.MapConfig.InitialZoom = configDto.initial_zoom;
+                x.MapConfig.TileSets = tileSets.ToArray();
             });
         }
 
-        private async Task ScrapMapTiles(MapGenieData data, string slug)
+        private async Task<IList<Category>> AddOrUpdateCategories(int mapId,
+            IDictionary<int, MapGenieCategory> categories, ICollection<MapGenieGroup> groups)
         {
-            string basePath = Path.Combine("wwwroot", "tiles", slug, data.map.slug);
-            using var semaphore = new SemaphoreSlim(3);
-            var tasks = new List<Task>();
-            var firstTileSetBound = data.mapConfig.tile_sets.First()?.bounds;
-            if (firstTileSetBound is null) return;
-
-            foreach (var tileSet in data.mapConfig.tile_sets)
+            var existingCategories = await categoryRepository.ToListAsync(x => x.MapId == mapId);
+            await categoryRepository.DeleteAsync(existingCategories.ToList());
+            var items = categories.Select(x => new Category()
             {
-                foreach (var b in tileSet.bounds ?? firstTileSetBound)
+                BaseId = x.Value.id,
+                MapId = mapId,
+                Group = groups.FirstOrDefault(c => c.id == x.Value.group_id)?.title ?? "",
+                Title = x.Value.title,
+                Icon = x.Value.icon,
+                Info = x.Value.info,
+                Template = x.Value.template,
+                Order = x.Value.order,
+                HasHeatmap = x.Value.has_heatmap,
+                FeaturesEnabled = x.Value.features_enabled,
+                DisplayType = x.Value.display_type,
+                IgnEnabled = x.Value.ign_enabled,
+                IgnVisible = x.Value.ign_visible,
+                Visible = x.Value.visible,
+                Description = x.Value.description ?? ""
+            }).ToList();
+            await categoryRepository.AddAsync(items);
+            return items;
+        }
+
+        private async Task AddLocations(IList<Category> categories,
+            ICollection<MapGenieLocation> locations, string? userId)
+        {
+            var range = locations.Select(l =>
+            {
+                var category = categories.FirstOrDefault(x => x.BaseId == l.category_id);
+                if (category is null) throw new Exception($"no category found for this location {l.title}");
+                var loc = new Location()
                 {
-                    var z = b.Key;
-                    var bound = b.Value;
-
-                    if (z > tileSet.max_zoom) break;
-
-                    for (int x = bound.x.min; x <= bound.x.max; x++)
+                    BaseId = l.id,
+                    Title = l.title,
+                    Description = l.description ?? "",
+                    Latitude = l.latitude,
+                    Longitude = l.longitude,
+                    CategoryId = category.Id,
+                    Medias = l.media?.Select(m => new Media()
                     {
-                        for (int y = bound.y.min; y <= bound.y.max; y++)
+                        Title = m.title,
+                        Type = m.type,
+                        FileName = m.file_name,
+                        MimeType = m.mime_type
+                    }).ToList() ?? []
+                };
+                if (l.Checked.HasValue && userId is not null)
+                {
+                    loc.UserLocations.Add(new UserLocation()
+                    {
+                        Checked = l.Checked.Value,
+                        UserId = userId
+                    });
+                }
+
+                return loc;
+            }).ToList();
+
+            await locationRepository.AddAsync(range);
+            const string oldIdPattern = @"locationIds=(\d+)";
+            foreach (var location in range)
+            {
+                if (string.IsNullOrEmpty(location.Description)) continue;
+                var match = Match(location.Description, oldIdPattern);
+                if (!match.Success) continue;
+                if (!int.TryParse(match.Groups[1].Value, out var oldId)) continue;
+                var targetLocation = range.FirstOrDefault(x => x.BaseId == oldId);
+                if (targetLocation != null)
+                {
+                    location.Description = Replace(location.Description,
+                        oldIdPattern, $"locationIds={targetLocation.Id}");
+                }
+            }
+
+            await locationRepository.UpdateAsync(range);
+        }
+        public async Task Scrap(string slug, IList<IFormFile> files)
+        {
+            var game = await gameRepository.GetAsync(x => x.Slug == slug);
+            if (game is null) return;
+            List<DownloadDto> downloadList = [];
+            foreach (var file in files)
+            {
+                var data = await ConvertJsonFileToMapGenieData(file);
+                await ScrapMarker(slug);
+                downloadList.AddRange(CreateDownloadListFromMedias(data));
+                downloadList.AddRange(CreateDownloadListFromMapTiles(data));
+            }
+
+            DownloadFromList(downloadList);
+        }
+        private static IList<DownloadDto> CreateDownloadListFromMedias(MapGenieData data)
+        {
+            IList<DownloadDto> list = [];
+            foreach (var location in data.locations)
+            {
+                if (location.media == null) continue;
+                foreach (var media in location.media)
+                {
+                    list.Add(new DownloadDto(media.url, Path.Combine("storage", "media", media.file_name)));
+                }
+            }
+
+            return list;
+        }
+        private static IList<DownloadDto> CreateDownloadListFromMapTiles(MapGenieData data)
+        {
+            IList<DownloadDto> list = [];
+            var firstTileSetBound = data.mapConfig.tile_sets.First().bounds;
+            foreach (var mapConfigTileSet in data.mapConfig.tile_sets)
+            {
+                for (var i = mapConfigTileSet.min_zoom; i <= mapConfigTileSet.max_zoom; i++)
+                {
+                    var bounds = mapConfigTileSet.bounds ?? firstTileSetBound;
+                    if (!bounds.TryGetValue(i, value: out var bound)) continue;
+                    for (var x = bound.x.min; x <= bound.x.max; x++)
+                    {
+                        for (var y = bound.y.min; y <= bound.y.max; y++)
                         {
-                            var patternFixed = tileSet.pattern
-                                .Replace("{z}", z.ToString())
+                            var patternFixed = mapConfigTileSet.pattern
+                                .Replace("{z}", i.ToString())
                                 .Replace("{x}", x.ToString())
                                 .Replace("{y}", y.ToString());
-                            await semaphore.WaitAsync();
-                            tasks.Add(Task.Run(() => DownloadTile(semaphore, patternFixed)));
+                            list.Add(new DownloadDto($"https://tiles.mapgenie.io/games/{patternFixed}",
+                                Path.Combine("tiles", patternFixed)));
                         }
                     }
                 }
             }
-            await Task.WhenAll(tasks);
+
+            return list;
         }
-        private async Task ScrapMedias(MapGenieData data)
+        private async void DownloadFromList(IList<DownloadDto> list)
         {
-            string basePath = Path.Combine("wwwroot", "storage", "media");
-            Directory.CreateDirectory(basePath);
-            using var semaphore = new SemaphoreSlim(3);
+            using var semaphore = new SemaphoreSlim(3, 3);
             var tasks = new List<Task>();
-
-            foreach (var item in data.locations)
+            foreach (var item in list)
             {
-                if (item.media is not null)
+                var semaphoreCopy = semaphore;
+                await semaphoreCopy.WaitAsync();
+                tasks.Add(Task.Run(async () =>
                 {
-                    foreach (var item1 in item.media)
+                    try
                     {
-                        var savePath = Path.Combine(basePath, item1.file_name);
-                        if (!File.Exists(savePath))
-                        {
-                            await semaphore.WaitAsync();
-                            tasks.Add(Task.Run(async () =>
-                        {
-                            try
-                            {
-                                Console.WriteLine($"downloading media {savePath}");
-                                byte[] image = await _httpClient.GetByteArrayAsync(item1.url);
-                                await File.WriteAllBytesAsync(savePath, image);
-                            }
-                            catch
-                            {
-                                Console.WriteLine($"downloading media faild {savePath}");
-                                semaphore.Release();
-                            }
-                            finally
-                            {
-                                semaphore.Release();
-                            }
-                        }));
-                        };
+                        if (fileStorageService.Exist(item.SavePath)) return;
+                        var tileData = await _httpClient.GetByteArrayAsync(item.Url);
+                        await fileStorageService.SaveFileAsync(tileData, item.SavePath);
                     }
-                }
+                    finally
+                    {
+                        semaphoreCopy.Release();
+                    }
+                }));
             }
             await Task.WhenAll(tasks);
-        }
-        private async Task InsertMapGenieDataToDb(Game game)
-        {
-            var currentMap = game.Maps.FirstOrDefault() ?? throw new Exception("no map to update");
-            var qurey = _gameRepository.AsQueryable()
-                .Include(x => x.Maps.Where(c => c.Slug == currentMap.Slug))
-                .ThenInclude(m => m.TileSets)
-                .Include(x => x.Maps)
-                .ThenInclude(m => m.Categories)
-                .ThenInclude(c => c.Locations)
-                .ThenInclude(l => l.Medias)
-                .Where(x => x.Slug == game.Slug);
-
-            var existingGame = await qurey.FirstOrDefaultAsync();
-            if (existingGame == null) await _gameRepository.AddAsync(game);
-            else
-            {
-                if (existingGame.Maps.Any(x => x.Slug == currentMap.Slug))
-                    await _mapRepository.AsQueryable().Where(x => x.Slug == currentMap.Slug)
-                        .ExecuteDeleteAsync();
-
-                existingGame.Description = game.Description;
-                existingGame.Name = game.Name;
-                var newMap = new Map()
-                {
-                    Name = currentMap.Name,
-                    Slug = currentMap.Slug,
-                    Categories = currentMap.Categories,
-                    Description = game.Description,
-                    GameId = existingGame.Id,
-                    MapConfig = new()
-                    {
-                        StartLng = currentMap.MapConfig.StartLng,
-                        StartLat = currentMap.MapConfig.StartLat,
-                        InitialZoom = currentMap.MapConfig.InitialZoom,
-                    },
-                };
-
-                foreach (var tileSet in currentMap.TileSets)
-                    newMap.TileSets.Add(tileSet);
-
-                existingGame.Maps.Add(newMap);
-                await _gameRepository.UpdateAsync(existingGame);
-            }
-        }
-        private static Game CreateEntityFromMapGenieData(MapGenieData data, MapGenieSetting setting)
-        {
-            var game = new Game
-            {
-                Slug = data.slug ?? setting.GameSlug,
-                Name = data.name ?? setting.GameName,
-                Description = data.description
-            };
-
-            var map = game.Maps.FirstOrDefault(x => x.Slug == data.map.slug);
-            if (map == null)
-            {
-                map = new Map
-                {
-                    GameId = game.Id,
-                    MapConfig = new MapConfig()
-                };
-                game.Maps.Add(map);
-            }
-
-            map.Name = data.map.title;
-            map.Slug = data.map.slug;
-            map.MapConfig.StartLng = data.mapConfig.start_lng;
-            map.MapConfig.StartLat = data.mapConfig.start_lat;
-            map.MapConfig.InitialZoom = data.mapConfig.initial_zoom;
-            map.TileSets.Clear();
-            map.Categories.Clear();
-
-            foreach (var tile_set in data.mapConfig.tile_sets)
-            {
-                map.TileSets.Add(new()
-                {
-                    Extension = tile_set.extension,
-                    Name = tile_set.name,
-                    MaxZoom = tile_set.max_zoom,
-                    MinZoom = tile_set.min_zoom,
-                    Pattern = tile_set.pattern,
-                });
-            }
-
-            foreach (var group in data.groups)
-            {
-                foreach (var category in group.categories)
-                {
-                    Category category1 = new Category()
-                    {
-                        Title = category.title,
-                        Description = category.description ?? string.Empty,
-                        DisplayType = category.display_type,
-                        FeaturesEnabled = category.features_enabled,
-                        HasHeatmap = category.has_heatmap,
-                        Icon = category.icon,
-                        IgnEnabled = category.ign_enabled,
-                        IgnVisible = category.ign_visible,
-                        Visible = category.visible,
-                        Template = category.template,
-                        Order = category.order,
-                        Info = category.info,
-                        Group = group.title,
-                    };
-
-                    foreach (var location in data.locations.Where(x => x.category_id == category.id))
-                    {
-                        category1.Locations.Add(new()
-                        {
-                            Title = location.title,
-                            Description = location.description ?? string.Empty,
-                            Latitude = location.latitude,
-                            Longitude = location.longitude,
-                            Medias = location.media.Select(x => new Media()
-                            {
-                                FileName = x.file_name,
-                                MimeType = x.mime_type,
-                                Title = x.title,
-                                Type = x.type,
-                            }).ToList()
-                        });
-
-                    }
-                    map.Categories.Add(category1);
-                }
-            }
-
-            return game;
         }
         private static async Task<MapGenieData> ConvertJsonFileToMapGenieData(IFormFile file)
         {
@@ -246,10 +238,11 @@ namespace game_maps.Application.Services
             var jsonString = await reader.ReadToEndAsync();
             return JsonSerializer.Deserialize<MapGenieData>(jsonString)!;
         }
-        private async Task ScrapMarker(string slug)
+        public async Task ScrapMarker(string slug)
         {
-            var imgBytes = await DownloadAndReadImageBytes‌($"https://cdn.mapgenie.io/images/games/{slug}/markers.png");
-            var jsonString = await DownloadAndReadJsonFileString‌($"https://cdn.mapgenie.io/images/games/{slug}/markers.json");
+            var imgBytes = await DownloadAndReadImageBytes($"https://cdn.mapgenie.io/images/games/{slug}/markers.png");
+            var jsonString =
+                await DownloadAndReadJsonFileString($"https://cdn.mapgenie.io/images/games/{slug}/markers.json");
 
             if (jsonString is not null)
             {
@@ -258,11 +251,8 @@ namespace game_maps.Application.Services
                 {
                     using var ms = new MemoryStream(imgBytes);
                     using var originalImage = Image.FromStream(ms);
-                    foreach (var kvp in json)
+                    foreach (var (key, model) in json)
                     {
-                        var key = kvp.Key;
-                        var model = kvp.Value;
-
                         var cropRect = new Rectangle(
                             (int)(model.x * model.pixelRatio),
                             (int)(model.y * model.pixelRatio),
@@ -270,79 +260,42 @@ namespace game_maps.Application.Services
                             (int)(model.height * model.pixelRatio)
                         );
 
-                        using (var croppedImage = new Bitmap(cropRect.Width, cropRect.Height))
+                        using var croppedImage = new Bitmap(cropRect.Width, cropRect.Height);
+                        using (var graphics = Graphics.FromImage(croppedImage))
                         {
-                            using (var graphics = Graphics.FromImage(croppedImage))
-                            {
-                                graphics.DrawImage(
-                                    originalImage,
-                                    new Rectangle(0, 0, croppedImage.Width, croppedImage.Height),
-                                    cropRect,
-                                    GraphicsUnit.Pixel
-                                );
-                            }
-
-                            string savePath = Path.Combine("wwwroot", "images", slug, $"{key}.png");
-                            var dir = Path.GetDirectoryName(savePath);
-                            if (dir is not null)
-                            {
-                                Directory.CreateDirectory(dir);
-                                croppedImage.Save(savePath, ImageFormat.Png);
-                            }
+                            graphics.DrawImage(
+                                originalImage,
+                                new Rectangle(0, 0, croppedImage.Width, croppedImage.Height),
+                                cropRect,
+                                GraphicsUnit.Pixel
+                            );
                         }
+
+                        var savePath = Path.Combine(fileStorageService.GetSavePath(), "images", slug, $"{key}.png");
+                        var dir = Path.GetDirectoryName(savePath);
+                        if (dir is null) continue;
+                        Directory.CreateDirectory(dir);
+                        croppedImage.Save(savePath, ImageFormat.Png);
                     }
                 }
             }
         }
-        private async Task<string> DownloadAndReadJsonFileString(string url)
+        private async Task<string?> DownloadAndReadJsonFileString(string url)
         {
             var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+            request.Headers.UserAgent.ParseAdd(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
             var response = await _httpClient.SendAsync(request);
             return await response.Content.ReadAsStringAsync();
         }
         private async Task<byte[]> DownloadAndReadImageBytes(string url)
         {
             var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+            request.Headers.UserAgent.ParseAdd(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
             var response = await _httpClient.SendAsync(request);
             var imgBytes = await response.Content.ReadAsByteArrayAsync();
             return imgBytes;
-        }
-        private async Task DownloadTile(SemaphoreSlim semaphore, string pattern, int attempt = 1, int maxAttempts = 5)
-        {
-            string url = $"https://tiles.mapgenie.io/games/{pattern}";
-            try
-            {
-                var savePath = Path.Combine("wwwroot", "tiles", pattern);
-                var directoryPath = Path.GetDirectoryName(savePath);
-                Directory.CreateDirectory(directoryPath!);
-                if (File.Exists(savePath)) return;
-                byte[] tileData = await _httpClient.GetByteArrayAsync(url);
-                await File.WriteAllBytesAsync(savePath, tileData);
-                Console.WriteLine($"Tile successfully downloaded and saved: {savePath}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Failed to download or save tile from {url} on attempt {attempt}: {ex.Message}");
-
-                if (attempt < maxAttempts)
-                {
-                    Console.WriteLine($"Retrying... (Attempt {attempt + 1} of {maxAttempts})");
-                    await DownloadTile(semaphore, pattern, attempt + 1, maxAttempts);
-                }
-                else Console.WriteLine($"Max retries reached. Could not download the tile from {url}");
-            }
-            finally
-            {
-                semaphore.Release();
-            }
-        }
-        private static string GetSavePath(string basePath, string tileSetName, int zoom, int x, int y, string extension)
-        {
-            string directoryPath = Path.Combine(basePath, tileSetName, zoom.ToString(), x.ToString());
-            Directory.CreateDirectory(directoryPath);
-            return Path.Combine(directoryPath, $"{y}.{extension}");
         }
     }
 }

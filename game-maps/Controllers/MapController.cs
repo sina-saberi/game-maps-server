@@ -22,10 +22,10 @@ namespace game_maps.Controllers
             return await _mapService.GetAllAsync(slug);
         }
 
-        [HttpGet("config/{slug}")]
-        public async Task<MapConfigDto> GetMapConfig(string slug)
+        [HttpGet("detail/{slug}")]
+        public async Task<MapDetailDto> GetMapConfig(string slug)
         {
-            return await _mapService.GetMapConfigAsync(slug);
+            return await _mapService.GetMapDetail(slug);
         }
     }
 }

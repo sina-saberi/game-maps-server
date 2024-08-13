@@ -2,69 +2,89 @@
 using game_maps.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.Collections;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
 
 namespace game_maps.Infrastructure.Base
 {
-    public class BaseRepository<TEntity, TIdentity> : IRepository<TEntity, TIdentity> where TEntity : Entity<TIdentity>
+    public class BaseRepository<TEntity, TIdentity>(GameMapsDbContext context) : IRepository<TEntity, TIdentity>
+        where TEntity : Entity<TIdentity>, new()
     {
-        private readonly GameMapsDbContext context;
-
-        public BaseRepository(GameMapsDbContext context)
-        {
-            this.context = context;
-        }
-
         public IQueryable<TEntity> AsQueryable()
         {
             return context.Set<TEntity>().AsQueryable();
         }
+
         public async Task<TEntity?> GetByIdAsync(int id)
         {
             return await context.Set<TEntity>().FindAsync(id);
         }
+
         public async Task<TEntity?> GetAsync(Expression<Func<TEntity, bool>> exp)
         {
             return await context.Set<TEntity>().FirstOrDefaultAsync(exp);
         }
+
         public async Task<ICollection<TEntity>> ToListAsync()
         {
             return await AsQueryable().ToListAsync();
         }
+
         public async Task<ICollection<TEntity>> ToListAsync(Expression<Func<TEntity, bool>> exp)
         {
             return await AsQueryable().Where(exp).ToListAsync();
         }
+
         public async Task<TEntity> AddAsync(TEntity entity)
         {
             await context.Set<TEntity>().AddAsync(entity);
             await context.SaveChangesAsync();
             return entity;
         }
+
+        public async Task<IList<TEntity>> AddAsync(IList<TEntity> entities)
+        {
+            var set = context.Set<TEntity>();
+            await set.AddRangeAsync(entities);
+            await context.SaveChangesAsync();
+            return entities;
+        }
+
         public async Task<TEntity> UpdateAsync(TEntity entity)
         {
             context.Set<TEntity>().Update(entity);
             await context.SaveChangesAsync();
             return entity;
         }
-        public async Task<TEntity> AddOrUpdateAsync(Expression<Func<TEntity, bool>> exp, TEntity entity)
+
+        public async Task<IList<TEntity>> UpdateAsync(IList<TEntity> entity)
         {
+            context.Set<TEntity>().UpdateRange(entity);
+            await context.SaveChangesAsync();
+            return entity;
+        }
+
+        public async Task<TEntity> AddOrUpdateAsync(Expression<Func<TEntity, bool>> exp, Action<TEntity> updateEntity)
+        {
+            TEntity entity;
             var existingEntity = await context.Set<TEntity>().FirstOrDefaultAsync(exp);
             if (existingEntity != null)
             {
-                var existingEntityEntry = context.Entry(existingEntity);
-                var newEntityEntry = context.Entry(entity);
-                existingEntityEntry.CurrentValues.SetValues(entity);
-                existingEntityEntry.Property(e => e.Id).IsModified = false;
+                entity = existingEntity;
             }
             else
             {
+                entity = new TEntity();
                 await context.Set<TEntity>().AddAsync(entity);
             }
+
+            updateEntity(entity);
+            await context.SaveChangesAsync();
             return entity;
         }
+
         public async Task<TEntity> AddOrUpdateAsync(TEntity entity)
         {
             var existingEntity = await context.Set<TEntity>().FindAsync(entity.Id);
@@ -84,6 +104,7 @@ namespace game_maps.Infrastructure.Base
                         entry.Property(property.Name).IsModified = true;
                     }
                 }
+
                 //await context.SaveChangesAsync();
                 return entry.Entity;
             }
@@ -94,6 +115,7 @@ namespace game_maps.Infrastructure.Base
                 return entity;
             }
         }
+
         public async Task DeleteAsync(int id)
         {
             var entity = await context.Set<TEntity>().FindAsync(id);
@@ -103,8 +125,16 @@ namespace game_maps.Infrastructure.Base
                 await context.SaveChangesAsync();
             }
         }
+
+        public async Task DeleteAsync(IList<TEntity> entities)
+        {
+            var entitySet = context.Set<TEntity>();
+            entitySet.RemoveRange(entities);
+            await context.SaveChangesAsync();
+        }
     }
 }
+
 public class BaseRepository<TEntity> : IRepository<TEntity> where TEntity : Entity, new()
 {
     private readonly GameMapsDbContext context;
@@ -120,6 +150,7 @@ public class BaseRepository<TEntity> : IRepository<TEntity> where TEntity : Enti
         await context.SaveChangesAsync();
         return entity;
     }
+
     public async Task<TEntity> AddOrUpdateAsync(Expression<Func<TEntity, bool>> exp, Action<TEntity> updateEntity)
     {
         TEntity entity;
@@ -133,14 +164,17 @@ public class BaseRepository<TEntity> : IRepository<TEntity> where TEntity : Enti
             entity = new TEntity();
             await context.Set<TEntity>().AddAsync(entity);
         }
+
         updateEntity(entity);
         await context.SaveChangesAsync();
         return entity;
     }
+
     public IQueryable<TEntity> AsQueryable()
     {
         return context.Set<TEntity>().AsQueryable();
     }
+
     public async Task DeleteAsync(Expression<Func<TEntity, bool>> exp)
     {
         var entity = await context.Set<TEntity>().FirstOrDefaultAsync(exp);
@@ -150,18 +184,22 @@ public class BaseRepository<TEntity> : IRepository<TEntity> where TEntity : Enti
             await context.SaveChangesAsync();
         }
     }
+
     public async Task<TEntity?> GetAsync(Expression<Func<TEntity, bool>> exp)
     {
         return await context.Set<TEntity>().FirstOrDefaultAsync(exp);
     }
+
     public async Task<ICollection<TEntity>> ToListAsync()
     {
         return await AsQueryable().ToListAsync();
     }
+
     public async Task<ICollection<TEntity>> ToListAsync(Expression<Func<TEntity, bool>> exp)
     {
         return await AsQueryable().Where(exp).ToListAsync();
     }
+
     public async Task<TEntity> UpdateAsync(TEntity entity)
     {
         context.Set<TEntity>().Update(entity);

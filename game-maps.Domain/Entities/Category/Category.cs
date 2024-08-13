@@ -9,6 +9,7 @@ namespace game_maps.Domain.Entities.Category
 {
     public class Category : Entity<int>
     {
+        public int BaseId { get; set; }
         public int MapId { get; set; }
         public string Group { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;

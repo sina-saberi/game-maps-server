@@ -15,13 +15,9 @@ namespace game_maps.Application.Services
     public class TokenService(IConfiguration _configuration) : ITokenService
     {
 
-        public string GenerateAccessToken(IdentityUser user)
+        public string GenerateAccessToken(IList<Claim> claims)
         {
-            var claims = new[]
-            {
-                new Claim(JwtRegisteredClaimNames.Sub, user.Id),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            };
+          
 
             var key = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(_configuration["JwtConfig:Secret"]!));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

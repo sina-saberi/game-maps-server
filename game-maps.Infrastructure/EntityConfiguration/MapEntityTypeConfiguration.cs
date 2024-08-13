@@ -1,11 +1,9 @@
 ﻿using game_maps.Domain.Entities.Map;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Newtonsoft.Json;
+
 
 namespace game_maps.Infrastructure.EntityConfiguration
 {
@@ -19,9 +17,13 @@ namespace game_maps.Infrastructure.EntityConfiguration
             builder.Property(m => m.Name).IsRequired().HasMaxLength(300);
             builder.Property(m => m.Description).HasMaxLength(1000);
             builder.Property(m => m.Slug).HasMaxLength(400);
-            builder.OwnsOne(x => x.MapConfig);
-            builder.HasMany(x => x.TileSets).WithOne().HasForeignKey(x => x.MapId).OnDelete(DeleteBehavior.Cascade);
             builder.HasMany(x => x.Categories).WithOne().HasForeignKey(x => x.MapId);
+
+            var jsonConverter = new ValueConverter<MapConfig, string>(
+                v => JsonConvert.SerializeObject(v),
+                v => JsonConvert.DeserializeObject<MapConfig>(v) ?? new MapConfig());
+
+            builder.Property(x => x.MapConfig).HasColumnType("jsonb").HasConversion(jsonConverter);
         }
     }
 }

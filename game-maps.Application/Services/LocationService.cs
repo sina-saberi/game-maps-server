@@ -38,7 +38,7 @@ namespace game_maps.Application.Services
         {
             var query = from map in _mapRepository.AsQueryable()
                         join c in _categoryRepository.AsQueryable() on map.Id equals c.MapId
-                        join l in _locationRepository.AsQueryable() on c.Id equals l.CateogryId
+                        join l in _locationRepository.AsQueryable() on c.Id equals l.CategoryId
                         join ul in _userLocationRepository.AsQueryable() on
                         new { l1 = l.Id, l2 = userId } equals new { l1 = ul.LocationId, l2 = ul.UserId }
                         where map.Slug == slug
@@ -50,7 +50,7 @@ namespace game_maps.Application.Services
         {
             var query = from map in _mapRepository.AsQueryable()
                         join c in _categoryRepository.AsQueryable() on map.Id equals c.MapId
-                        join l in _locationRepository.AsQueryable() on c.Id equals l.CateogryId
+                        join l in _locationRepository.AsQueryable() on c.Id equals l.CategoryId
                         into ml
                         from mlc in ml.DefaultIfEmpty()
                         where map.Slug == slug
@@ -81,7 +81,7 @@ namespace game_maps.Application.Services
         {
             var query = from m in _mapRepository.AsQueryable()
                         join c in _categoryRepository.AsQueryable() on m.Id equals c.MapId
-                        join l in _locationRepository.AsQueryable() on c.Id equals l.CateogryId
+                        join l in _locationRepository.AsQueryable() on c.Id equals l.CategoryId
                         into ml
                         from mapLocation in ml.DefaultIfEmpty()
                         where m.Slug == slug

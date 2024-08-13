@@ -41,7 +41,7 @@ namespace game_maps.Application.DTOs.MapGenie
         public int? region_id { get; set; }
         public int category_id { get; set; }
         public string title { get; set; }
-        public string description { get; set; }
+        public string? description { get; set; }
 
         [JsonPropertyName("latitude")]
         [JsonConverter(typeof(FlexibleDecimalConverter))]
@@ -53,6 +53,10 @@ namespace game_maps.Application.DTOs.MapGenie
         public string? features { get; set; }
         public string? ign_page_id { get; set; }
         public int[]? tags { get; set; }
-        public ICollection<MapGenieMedia> media { get; set; }
+        [JsonPropertyName("checked")]
+        public bool? Checked { get; set; }
+
+        public ICollection<MapGenieMedia>? media { get; set; }
+
     }
 }

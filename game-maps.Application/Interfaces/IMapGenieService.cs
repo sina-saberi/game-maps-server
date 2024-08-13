@@ -6,6 +6,8 @@ namespace game_maps.Application.Interfaces
 {
     public interface IMapGenieService
     {
-        public Task Scrap(MapGenieSetting setting, IFormFile mapDataFile);
+        public Task ToggleMapToGame(string slug, IList<IFormFile> files, string? userId);
+        public Task Scrap(string slug, IList<IFormFile> files);
+        public Task ScrapMarker(string slug);
     }
 }

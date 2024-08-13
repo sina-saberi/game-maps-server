@@ -21,7 +21,7 @@ namespace game_maps.Application.DTOs.MapGenie
         public bool ign_enabled { get; set; }
         public bool ign_visible { get; set; }
         public bool visible { get; set; }
-        public string description { get; set; }
+        public string? description { get; set; }
         public bool premium { get; set; }
     }
 }

@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using game_maps.Application;
 
 namespace game_maps.Test
 {
@@ -30,21 +31,10 @@ namespace game_maps.Test
             var solutionDirectory = Directory.GetParent(Directory.GetCurrentDirectory())?
                 .Parent?.Parent?.Parent?.FullName;
             if (solutionDirectory is null) throw new Exception("problem with finding direcoty");
-            var databasePath = Path.Combine(solutionDirectory, "game-maps", "app.db");
 
-            services.AddDbContext<GameMapsDbContext>(options =>
-                options.UseSqlite($"Data Source={databasePath}"));
+            // services.AddDbContext<GameMapsDbContext>(options =>
+            //     options.($"Data Source={databasePath}"));
 
-            services.AddScoped(typeof(IRepository<,>), typeof(BaseRepository<,>));
-            services.AddScoped(typeof(IRepository<>), typeof(BaseRepository<>));
-
-            services.AddAutoMapper(typeof(MappingProfile).Assembly);
-
-            services.AddScoped<IGameService, GameService>();
-            services.AddScoped<IMapGenieService, MapGenieService>();
-            services.AddScoped<IMapService, MapService>();
-            services.AddScoped<ICategoryService, CategoryService>();
-            services.AddScoped<ILocationService, LocationService>();
         }
 
         public void Dispose()

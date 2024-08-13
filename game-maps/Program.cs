@@ -1,8 +1,9 @@
-
 using game_maps.Application;
+using game_maps.Infrastructure;
 using Microsoft.AspNetCore.DataProtection.XmlEncryption;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.OpenApi.Models;
 
 namespace game_maps
@@ -12,8 +13,6 @@ namespace game_maps
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
-
-            builder.Services.RegisterApplication(builder.Configuration);
 
             builder.Services.AddCors(options =>
             {
@@ -26,7 +25,7 @@ namespace game_maps
             });
 
             // Add services to the container.
-            builder.Services.AddAuthorization();
+            builder.Services.RegisterApplication(builder.Configuration);
 
             builder.Services.AddControllers();
             // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -38,7 +37,8 @@ namespace game_maps
                 // Add the security definition
                 c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
                 {
-                    Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
+                    Description =
+                        "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
                     Name = "Authorization",
                     In = ParameterLocation.Header,
                     Type = SecuritySchemeType.ApiKey,
@@ -46,20 +46,33 @@ namespace game_maps
                 });
 
                 // Add the security requirement
-                c.AddSecurityRequirement(new OpenApiSecurityRequirement{
+                c.AddSecurityRequirement(new OpenApiSecurityRequirement
                 {
-                    new OpenApiSecurityScheme{
-                        Reference = new OpenApiReference{
-                        Type = ReferenceType.SecurityScheme,
-                        Id = "Bearer"
+                    {
+                        new OpenApiSecurityScheme
+                        {
+                            Reference = new OpenApiReference
+                            {
+                                Type = ReferenceType.SecurityScheme,
+                                Id = "Bearer"
+                            }
+                        },
+                        Array.Empty<string>()
                     }
-                },Array.Empty<string>()}});
+                });
             });
 
-            builder.Services.RegisterAuthentication(builder.Configuration);
 
             var app = builder.Build();
+
             app.UseStaticFiles();
+            var gameMapsPath = Path.Combine(app.Environment.ContentRootPath, "..", "..", "game-maps.data");
+
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(gameMapsPath),
+                RequestPath = "/map-files"
+            });
 
             // Disable the routes /register and /info
 
@@ -69,12 +82,14 @@ namespace game_maps
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
+
+            
             app.UseCors("allowAll");
 
             app.UseHttpsRedirection();
 
+            app.UseAuthentication(); 
             app.UseAuthorization();
-
 
             app.MapControllers();
 

@@ -13,16 +13,19 @@ using System.Threading.Tasks;
 
 namespace game_maps.Application.Services
 {
-    public class MapService(IRepository<Map, int> mapRepository, IRepository<Game, int> gameRepository, IMapper mapper) : IMapService
+    public class MapService(IRepository<Map, int> mapRepository, IRepository<Game, int> gameRepository, IMapper mapper)
+        : IMapService
     {
         private readonly IRepository<Map, int> _mapRepository = mapRepository;
         private readonly IRepository<Game, int> _gameRepository = gameRepository;
         private readonly IMapper _mapper = mapper;
+
         public async Task<IList<MapDto>> GetAllAsync()
         {
             var result = await _mapRepository.ToListAsync();
             return _mapper.Map<List<MapDto>>(result);
         }
+
         public async Task<IList<MapDto>> GetAllAsync(string slug)
         {
             var game = await _gameRepository.AsQueryable()
@@ -31,12 +34,12 @@ namespace game_maps.Application.Services
 
             return _mapper.Map<List<MapDto>>(game?.Maps);
         }
-        public async Task<MapConfigDto> GetMapConfigAsync(string slug)
+
+        public async Task<MapDetailDto> GetMapDetail(string slug)
         {
             var map = await _mapRepository.AsQueryable()
-                .Include(x => x.TileSets)
                 .FirstOrDefaultAsync(x => x.Slug.Equals(slug));
-            return _mapper.Map<MapConfigDto>(map);
+            return _mapper.Map<MapDetailDto>(map);
         }
     }
 }

@@ -11,5 +11,6 @@ namespace game_maps.Domain.Entities.Map
         public int InitialZoom { get; set; }
         public decimal StartLat { get; set; }
         public decimal StartLng { get; set; }
+        public ICollection<TileSet> TileSets { get; set; } = [];
     }
 }

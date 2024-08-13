@@ -29,7 +29,7 @@ namespace game_maps.Infrastructure.EntityConfiguration
             builder.Property(x => x.IgnVisible).IsRequired().HasDefaultValue(false);
             builder.Property(x => x.Visible).IsRequired().HasDefaultValue(true);
             builder.Property(x => x.Description).HasMaxLength(5000);
-            builder.HasMany(x => x.Locations).WithOne().HasForeignKey(x => x.CateogryId)
+            builder.HasMany(x => x.Locations).WithOne().HasForeignKey(x => x.CategoryId)
                 .OnDelete(DeleteBehavior.Cascade);
         }
     }

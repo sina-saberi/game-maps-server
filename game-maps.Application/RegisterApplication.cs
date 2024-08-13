@@ -15,6 +15,8 @@ namespace game_maps.Application
     {
         public static void RegisterApplication(this IServiceCollection services, IConfiguration configuration)
         {
+            services.RegisterInfrastructure(configuration);
+
             services.AddAutoMapper(typeof(MappingProfile).Assembly);
             services.AddScoped<IGameService, GameService>();
             services.AddScoped<IMapGenieService, MapGenieService>();
@@ -22,30 +24,8 @@ namespace game_maps.Application
             services.AddScoped<ICategoryService, CategoryService>();
             services.AddScoped<ILocationService, LocationService>();
             services.AddSingleton<ITokenService, TokenService>();
+            services.AddSingleton<IFileStorageService, FileStorageService>();
             services.AddScoped<IUserService, UserService>();
-            services.RegisterInfrastructure(configuration);
-        }
-
-        public static void RegisterAuthentication(this IServiceCollection services, IConfiguration configuration)
-        {
-            var secret = configuration["JwtConfig:Secret"]!;
-            var key = Encoding.ASCII.GetBytes(secret);
-            services.AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-            })
-            .AddJwtBearer(options =>
-            {
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidateIssuer = false,
-                    ValidateAudience = false,
-                    ValidateLifetime = true,
-                    ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = new SymmetricSecurityKey(key)
-                };
-            });
         }
     }
 }
