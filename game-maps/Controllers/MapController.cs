@@ -23,9 +23,9 @@ namespace game_maps.Controllers
         }
 
         [HttpGet("detail/{slug}")]
-        public async Task<MapDetailDto> GetMapConfig(string slug)
+        public async Task<MapDetailDto> GetMapConfig(string gameSlug, string slug)
         {
-            return await _mapService.GetMapDetail(slug);
+            return await _mapService.GetMapDetail(gameSlug, slug);
         }
     }
 }

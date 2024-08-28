@@ -16,11 +16,11 @@ namespace game_maps.Infrastructure.EntityConfiguration
         {
             builder.HasKey(x => x.Id);
             builder.Property(x => x.MapId).IsRequired();
-            builder.Property(x => x.Group).HasMaxLength(300).IsRequired().HasDefaultValue("other");
+            builder.Property(x => x.Group).HasMaxLength(1000).IsRequired().HasDefaultValue("other");
             builder.Property(x => x.Title).HasMaxLength(500).IsRequired();
-            builder.Property(x => x.Icon).HasMaxLength(100);
+            builder.Property(x => x.Icon).HasMaxLength(500);
             builder.Property(x => x.Info).HasMaxLength(900);
-            builder.Property(x => x.Template).HasMaxLength(300);
+            builder.Property(x => x.Template).HasMaxLength(3000);
             builder.Property(x => x.Order).HasDefaultValue(1);
             builder.Property(x => x.HasHeatmap).HasDefaultValue(false);
             builder.Property(x => x.FeaturesEnabled).HasDefaultValue(false);

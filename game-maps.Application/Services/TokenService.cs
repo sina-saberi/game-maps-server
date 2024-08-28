@@ -12,19 +12,19 @@ using System.Threading.Tasks;
 
 namespace game_maps.Application.Services
 {
-    public class TokenService(IConfiguration _configuration) : ITokenService
+    public class TokenService(IConfiguration configuration) : ITokenService
     {
 
         public string GenerateAccessToken(IList<Claim> claims)
         {
           
 
-            var key = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(_configuration["JwtConfig:Secret"]!));
+            var key = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(configuration["JwtConfig:Secret"]!));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var token = new JwtSecurityToken(
                 claims: claims,
-                expires: DateTime.UtcNow.AddMinutes(30),
+                expires: DateTime.UtcNow.AddMinutes(240),
                 signingCredentials: creds);
 
             return new JwtSecurityTokenHandler().WriteToken(token);

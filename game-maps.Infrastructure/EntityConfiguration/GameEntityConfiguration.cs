@@ -9,7 +9,7 @@ namespace game_maps.Infrastructure.EntityConfiguration
         public void Configure(EntityTypeBuilder<Game> builder)
         {
             builder.HasKey(e => e.Id);
-            builder.Property(m => m.Name).IsRequired().HasMaxLength(300);
+            builder.Property(m => m.Name).IsRequired().HasMaxLength(600);
             builder.Property(m => m.Description).HasMaxLength(1000);
             builder.Property(m => m.Slug).HasMaxLength(500);
             

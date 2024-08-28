@@ -7,7 +7,12 @@ namespace game_maps.Application.Interfaces
     public interface IMapGenieService
     {
         public Task ToggleMapToGame(string slug, IList<IFormFile> files, string? userId);
-        public Task Scrap(string slug, IList<IFormFile> files);
-        public Task ScrapMarker(string slug);
+
+        public Task<byte[]> GetTileByPattern(string gameSlug, string mapSlug, string tileName, int z, int x, int y,
+            string extension);
+
+        public Task<byte[]> GetMedia(string fileName, string extension);
+
+        public Task<byte[]?> GetIcon(string slug, string name, string extension);
     }
 }

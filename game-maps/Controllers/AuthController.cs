@@ -1,5 +1,6 @@
 ﻿using game_maps.Application.DTOs.Auth;
 using game_maps.Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace game_maps.Controllers
@@ -21,6 +22,7 @@ namespace game_maps.Controllers
         }
 
         [HttpGet]
+        [Authorize]
         public async Task<bool> HaveAccess(string action)
         {
             return true;

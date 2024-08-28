@@ -76,19 +76,15 @@ namespace game_maps
 
             // Disable the routes /register and /info
 
-            // Configure the HTTP request pipeline.
-            if (app.Environment.IsDevelopment())
-            {
-                app.UseSwagger();
-                app.UseSwaggerUI();
-            }
 
-            
+            app.UseSwagger();
+            app.UseSwaggerUI();
+
             app.UseCors("allowAll");
 
             app.UseHttpsRedirection();
 
-            app.UseAuthentication(); 
+            app.UseAuthentication();
             app.UseAuthorization();
 
             app.MapControllers();

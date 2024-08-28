@@ -36,7 +36,7 @@ namespace game_maps.Application.Services
             {
                 AccessToken = token,
                 RefreshToken = refreshToken,
-                Expiration = DateTime.UtcNow.AddMinutes(30),
+                Expiration = DateTime.UtcNow.AddMinutes(240),
             };
         }
 

@@ -14,7 +14,7 @@ namespace game_maps.Infrastructure.EntityConfiguration
         public void Configure(EntityTypeBuilder<Media> builder)
         {
             builder.HasKey(x => x.Id);
-            builder.Property(x => x.Title).HasMaxLength(400);
+            builder.Property(x => x.Title).HasMaxLength(1000);
             builder.Property(x => x.LocationId).IsRequired();
             builder.Property(x => x.MimeType).IsRequired().HasMaxLength(200);
             builder.Property(x => x.Type).IsRequired().HasMaxLength(150);

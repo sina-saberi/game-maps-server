@@ -9,6 +9,6 @@ namespace game_maps.Application.Interfaces
 {
     public interface ICategoryService
     {
-        public Task<IList<GroupedCategoryDto>> GetGroupedCategories(string slug, string? userId);
+        public Task<IList<GroupedCategoryDto>> GetGroupedCategories(string gameSlug, string slug, string? userId);
     }
 }

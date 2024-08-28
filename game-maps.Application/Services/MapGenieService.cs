@@ -17,12 +17,6 @@ using static System.Text.RegularExpressions.Regex;
 
 namespace game_maps.Application.Services
 {
-    class DownloadDto(string url, string savePath)
-    {
-        public string Url { get; set; } = url;
-        public string SavePath { get; set; } = savePath;
-    }
-
     public class MapGenieService(
         IRepository<Map, int> mapRepository,
         IRepository<Game, int> gameRepository,
@@ -46,6 +40,97 @@ namespace game_maps.Application.Services
             }
         }
 
+        public async Task<byte[]> GetTileByPattern(string gameSlug, string mapSlug, string tileName, int z, int x,
+            int y,
+            string extension)
+        {
+            var pattern = $"{gameSlug}/{mapSlug}/{tileName}/{z}/{x}/{y}.{extension}";
+            var path = Path.Combine("tiles", pattern);
+            if (fileStorageService.Exist(path))
+            {
+                var img = await System.IO.File.ReadAllBytesAsync(fileStorageService.GetSavePath(path));
+                return img;
+            }
+
+            var url = "https://tiles.mapgenie.io/games/" + pattern;
+            using var client = new HttpClient();
+            var bytes = await client.GetByteArrayAsync(url);
+            await fileStorageService.SaveFileAsync(bytes, path);
+            return bytes;
+        }
+
+        public async Task<byte[]> GetMedia(string fileName, string extension)
+        {
+            var pattern = $"{fileName}.{extension}";
+            var path = Path.Combine("storage", "media", pattern);
+            if (fileStorageService.Exist(path))
+            {
+                var img = await File.ReadAllBytesAsync(fileStorageService.GetSavePath(path));
+                return img;
+            }
+
+            var url = "https://media.mapgenie.io/storage/media/" + pattern;
+            using var client = new HttpClient();
+            var bytes = await client.GetByteArrayAsync(url);
+            await fileStorageService.SaveFileAsync(bytes, path);
+            return bytes;
+        }
+
+        public async Task<byte[]?> GetIcon(string slug, string name, string extension)
+        {
+            var path = Path.Combine("images", slug, $"{name}.{extension}");
+            if (fileStorageService.Exist(path))
+            {
+                return await File.ReadAllBytesAsync(fileStorageService.GetSavePath(path));
+            }
+
+            var imgBytes = await DownloadAndReadImageBytes($"https://cdn.mapgenie.io/images/games/{slug}/markers.png");
+            var jsonString =
+                await DownloadAndReadJsonFileString($"https://cdn.mapgenie.io/images/games/{slug}/markers.json");
+            if (jsonString is null) return null;
+            var json = JsonSerializer.Deserialize<IDictionary<string, MapGenieMarketDto>>(jsonString);
+            if (json is null) return null;
+
+            byte[]? requestedIconBytes = null;
+
+
+            using var ms = new MemoryStream(imgBytes);
+            using var originalImage = Image.FromStream(ms);
+            foreach (var (key, model) in json)
+            {
+                var cropRect = new Rectangle(
+                    (int)(model.x * model.pixelRatio),
+                    (int)(model.y * model.pixelRatio),
+                    (int)(model.width * model.pixelRatio),
+                    (int)(model.height * model.pixelRatio)
+                );
+
+                using var croppedImage = new Bitmap(cropRect.Width, cropRect.Height);
+                using (var graphics = Graphics.FromImage(croppedImage))
+                {
+                    graphics.DrawImage(
+                        originalImage,
+                        new Rectangle(0, 0, croppedImage.Width, croppedImage.Height),
+                        cropRect,
+                        GraphicsUnit.Pixel
+                    );
+                }
+
+                var savePath = Path.Combine(fileStorageService.GetSavePath(), "images", slug, $"{key}.png");
+                var dir = Path.GetDirectoryName(savePath);
+                if (dir is null) continue;
+                Directory.CreateDirectory(dir);
+                croppedImage.Save(savePath, ImageFormat.Png);
+
+                if (key != name) continue;
+                using var resultStream = new MemoryStream();
+                croppedImage.Save(resultStream, ImageFormat.Png);
+                requestedIconBytes = resultStream.ToArray();
+            }
+
+            return requestedIconBytes;
+        }
+
         private async Task<Map> AddOrUpdateMapInGame(int gameId, MapGenieMapDto dto, MapGenieMapConfig configDto)
         {
             var tileSets = configDto.tile_sets.Select(c => new TileSet()
@@ -57,7 +142,7 @@ namespace game_maps.Application.Services
                 MinZoom = c.min_zoom
             });
 
-            return await mapRepository.AddOrUpdateAsync(x => x.Slug == dto.slug, x =>
+            return await mapRepository.AddOrUpdateAsync(x => x.Slug == dto.slug && x.GameId == gameId, x =>
             {
                 x.Slug = string.IsNullOrEmpty(x.Slug) ? dto.slug : x.Slug;
                 x.GameId = gameId;
@@ -115,7 +200,7 @@ namespace game_maps.Application.Services
                     {
                         Title = m.title,
                         Type = m.type,
-                        FileName = m.file_name,
+                        FileName = m.url.Replace("https://media.mapgenie.io/storage/media/", ""),
                         MimeType = m.mime_type
                     }).ToList() ?? []
                 };
@@ -149,86 +234,7 @@ namespace game_maps.Application.Services
 
             await locationRepository.UpdateAsync(range);
         }
-        public async Task Scrap(string slug, IList<IFormFile> files)
-        {
-            var game = await gameRepository.GetAsync(x => x.Slug == slug);
-            if (game is null) return;
-            List<DownloadDto> downloadList = [];
-            foreach (var file in files)
-            {
-                var data = await ConvertJsonFileToMapGenieData(file);
-                await ScrapMarker(slug);
-                downloadList.AddRange(CreateDownloadListFromMedias(data));
-                downloadList.AddRange(CreateDownloadListFromMapTiles(data));
-            }
 
-            DownloadFromList(downloadList);
-        }
-        private static IList<DownloadDto> CreateDownloadListFromMedias(MapGenieData data)
-        {
-            IList<DownloadDto> list = [];
-            foreach (var location in data.locations)
-            {
-                if (location.media == null) continue;
-                foreach (var media in location.media)
-                {
-                    list.Add(new DownloadDto(media.url, Path.Combine("storage", "media", media.file_name)));
-                }
-            }
-
-            return list;
-        }
-        private static IList<DownloadDto> CreateDownloadListFromMapTiles(MapGenieData data)
-        {
-            IList<DownloadDto> list = [];
-            var firstTileSetBound = data.mapConfig.tile_sets.First().bounds;
-            foreach (var mapConfigTileSet in data.mapConfig.tile_sets)
-            {
-                for (var i = mapConfigTileSet.min_zoom; i <= mapConfigTileSet.max_zoom; i++)
-                {
-                    var bounds = mapConfigTileSet.bounds ?? firstTileSetBound;
-                    if (!bounds.TryGetValue(i, value: out var bound)) continue;
-                    for (var x = bound.x.min; x <= bound.x.max; x++)
-                    {
-                        for (var y = bound.y.min; y <= bound.y.max; y++)
-                        {
-                            var patternFixed = mapConfigTileSet.pattern
-                                .Replace("{z}", i.ToString())
-                                .Replace("{x}", x.ToString())
-                                .Replace("{y}", y.ToString());
-                            list.Add(new DownloadDto($"https://tiles.mapgenie.io/games/{patternFixed}",
-                                Path.Combine("tiles", patternFixed)));
-                        }
-                    }
-                }
-            }
-
-            return list;
-        }
-        private async void DownloadFromList(IList<DownloadDto> list)
-        {
-            using var semaphore = new SemaphoreSlim(3, 3);
-            var tasks = new List<Task>();
-            foreach (var item in list)
-            {
-                var semaphoreCopy = semaphore;
-                await semaphoreCopy.WaitAsync();
-                tasks.Add(Task.Run(async () =>
-                {
-                    try
-                    {
-                        if (fileStorageService.Exist(item.SavePath)) return;
-                        var tileData = await _httpClient.GetByteArrayAsync(item.Url);
-                        await fileStorageService.SaveFileAsync(tileData, item.SavePath);
-                    }
-                    finally
-                    {
-                        semaphoreCopy.Release();
-                    }
-                }));
-            }
-            await Task.WhenAll(tasks);
-        }
         private static async Task<MapGenieData> ConvertJsonFileToMapGenieData(IFormFile file)
         {
             using var stream = new MemoryStream();
@@ -238,6 +244,7 @@ namespace game_maps.Application.Services
             var jsonString = await reader.ReadToEndAsync();
             return JsonSerializer.Deserialize<MapGenieData>(jsonString)!;
         }
+
         public async Task ScrapMarker(string slug)
         {
             var imgBytes = await DownloadAndReadImageBytes($"https://cdn.mapgenie.io/images/games/{slug}/markers.png");
@@ -280,6 +287,7 @@ namespace game_maps.Application.Services
                 }
             }
         }
+
         private async Task<string?> DownloadAndReadJsonFileString(string url)
         {
             var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -288,6 +296,7 @@ namespace game_maps.Application.Services
             var response = await _httpClient.SendAsync(request);
             return await response.Content.ReadAsStringAsync();
         }
+
         private async Task<byte[]> DownloadAndReadImageBytes(string url)
         {
             var request = new HttpRequestMessage(HttpMethod.Get, url);

@@ -14,7 +14,7 @@ namespace game_maps.Infrastructure.EntityConfiguration
             builder.HasKey(m => m.Id);
 
             builder.Property(m => m.GameId).IsRequired();
-            builder.Property(m => m.Name).IsRequired().HasMaxLength(300);
+            builder.Property(m => m.Name).IsRequired().HasMaxLength(1000);
             builder.Property(m => m.Description).HasMaxLength(1000);
             builder.Property(m => m.Slug).HasMaxLength(400);
             builder.HasMany(x => x.Categories).WithOne().HasForeignKey(x => x.MapId);

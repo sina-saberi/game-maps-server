@@ -9,11 +9,11 @@ namespace game_maps.Application.Interfaces
 {
     public interface ILocationService
     {
-        public Task<IList<LocationCateogryDto>> GetAllLocations(string slug, string? userId);
+        public Task<IList<LocationCateogryDto>> GetAllLocations(string gameSlug, string slug, string? userId);
         public Task<LocationDetailDto> GetLocationDetailById(int id);
         public Task<bool> ToggleLocation(int id, string userId);
-        public Task<int> GetCheckedCount(string slug, string userId);
-        public Task<int> GetLocationCount(string slug);
-        public Task<IList<LocationSearchDto>> SearchInLocation(string slug, string search);
+        public Task<int> GetCheckedCount(string gameSlug, string slug, string userId);
+        public Task<int> GetLocationCount(string gameSlug, string slug);
+        public Task<IList<LocationSearchDto>> SearchInLocation(string gameSlug, string slug, string search);
     }
 }

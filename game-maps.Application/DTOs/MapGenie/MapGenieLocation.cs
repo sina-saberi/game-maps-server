@@ -50,7 +50,7 @@ namespace game_maps.Application.DTOs.MapGenie
         [JsonPropertyName("longitude")]
         [JsonConverter(typeof(FlexibleDecimalConverter))]
         public decimal longitude { get; set; }
-        public string? features { get; set; }
+        // public string? features { get; set; }
         public string? ign_page_id { get; set; }
         public int[]? tags { get; set; }
         [JsonPropertyName("checked")]

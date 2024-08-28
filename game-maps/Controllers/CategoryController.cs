@@ -10,16 +10,15 @@ namespace game_maps.Controllers
     [ApiController]
     public class CategoryController(ICategoryService categoryService, ILocationService locationService) : ControllerBase
     {
-
         [HttpGet("{slug}")]
-        public async Task<SideBarDto> Get(string slug)
+        public async Task<SideBarDto> Get(string gameSlug, string slug)
         {
             var userId = User?.FindFirstValue(ClaimTypes.NameIdentifier);
             return new SideBarDto
             {
-                LocationCount = await locationService.GetLocationCount(slug),
-                CheckedCount = userId is not null ? await locationService.GetCheckedCount(slug, userId) : 0,
-                Groups = await categoryService.GetGroupedCategories(slug, userId)
+                LocationCount = await locationService.GetLocationCount(gameSlug, slug),
+                CheckedCount = userId is not null ? await locationService.GetCheckedCount(gameSlug, slug, userId) : 0,
+                Groups = await categoryService.GetGroupedCategories(gameSlug, slug, userId)
             };
         }
     }

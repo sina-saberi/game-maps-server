@@ -1,37 +1,32 @@
 ﻿using game_maps.Application.DTOs.Category;
 using game_maps.Application.Interfaces;
 using game_maps.Domain.Base;
-using game_maps.Domain.Entities.Map;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using game_maps.Domain.Entities.Game;
 
 namespace game_maps.Application.Services
 {
-    public class CategoryService(IRepository<Map, int> mapRepository) : ICategoryService
+    public class CategoryService(IRepository<Game, int> gameRepository) : ICategoryService
     {
-        private readonly IRepository<Map, int> _mapRepository = mapRepository;
-        public async Task<IList<GroupedCategoryDto>> GetGroupedCategories(string slug, string? userId)
+        public async Task<IList<GroupedCategoryDto>> GetGroupedCategories(string gameSlug, string slug, string? userId)
         {
-            var map = await _mapRepository.AsQueryable()
-                .Include(x => x.Categories)
-                .ThenInclude(x => x.Locations)
-                .ThenInclude(x => x.UserLocations.Where(c => c.UserId == userId))
-                .FirstOrDefaultAsync(x => x.Slug.Equals(slug));
+            var game = await
+                gameRepository.AsQueryable()
+                    .Include(x => x.Maps.Where(c => c.Slug.Equals(slug)))
+                    .ThenInclude(x => x.Categories)
+                    .ThenInclude(x => x.Locations)
+                    .ThenInclude(x => x.UserLocations.Where(c => c.UserId == userId))
+                    .FirstOrDefaultAsync(x => x.Slug.Equals(gameSlug));
 
-            var groupedCategoryDtos = new List<GroupedCategoryDto>();
-            if (map?.Categories != null)
+            var map = game?.Maps.FirstOrDefault();
+            var groupedCategory = new List<GroupedCategoryDto>();
+            if (map?.Categories == null) return groupedCategory;
             {
                 var groupedCategories = map.Categories.GroupBy(c => c.Group);
-                foreach (var group in groupedCategories)
+                groupedCategory.AddRange(groupedCategories.Select(group => new GroupedCategoryDto
                 {
-                    var groupedCategoryDto = new GroupedCategoryDto
-                    {
-                        Title = group.Key,
-                        categories = group.Select(category => new CategoryDto
+                    Title = group.Key,
+                    categories = group.Select(category => new CategoryDto
                         {
                             Id = category.Id,
                             Title = category.Title,
@@ -47,13 +42,13 @@ namespace game_maps.Application.Services
                             Visible = category.Visible,
                             Description = category.Description,
                             LocationCount = category.Locations.Count,
-                            CheckedCount = category.Locations.Where(x => x.UserLocations.Any(c => c.Checked)).Count()
-                        }).ToList()
-                    };
-                    groupedCategoryDtos.Add(groupedCategoryDto);
-                }
+                            CheckedCount = category.Locations.Count(x => x.UserLocations.Any(c => c.Checked))
+                        })
+                        .ToList()
+                }));
             }
-            return groupedCategoryDtos;
+
+            return groupedCategory;
         }
     }
 }

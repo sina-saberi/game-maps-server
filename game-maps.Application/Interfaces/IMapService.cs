@@ -11,6 +11,6 @@ namespace game_maps.Application.Interfaces
     {
         public Task<IList<MapDto>> GetAllAsync();
         public Task<IList<MapDto>> GetAllAsync(string slug);
-        public Task<MapDetailDto> GetMapDetail(string slug);
+        public Task<MapDetailDto> GetMapDetail(string gameSlug, string slug);
     }
 }
